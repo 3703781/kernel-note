@@ -16,4 +16,4 @@
 - [内存屏障](./synchronization/3-内存屏障.md)
 - [自旋锁](./synchronization/4-自旋锁.md)
 - [rw自旋锁](./synchronization/5-rw自旋锁.md)
-
+- [顺序锁](./synchronization/6-顺序锁.md)
