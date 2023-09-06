@@ -6,7 +6,7 @@
 ## 数据结构
 
 - [list](./data-structure/list)
-- [fifo](./data-structure/fifo)
+- [fifo](./data-structure/kfifo)
 
 
 ## 同步机制
