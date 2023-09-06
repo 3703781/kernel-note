@@ -18,7 +18,7 @@ SWP <Rt>, <Rt2>, [<Rn>]
 
 我们在[原子操作](1-原子操作.md)那篇文档中描述的read-modify-write的问题本质上是一个保持对内存read和write访问的原子性的问题。也就是说对内存的读和写的访问不能被打断。对该问题的解决可以通过硬件、软件或者软硬件结合的方法来进行。早期的ARM CPU给出的方案就是依赖硬件：SWP这个汇编指令执行了一次读内存操作、一次写内存操作，但是从程序员的角度看，SWP这条指令就是原子的，读写之间不会被任何的异步事件打断。具体底层的硬件是如何做的呢？这时候，硬件会提供一个lock signal，在进行memory操作的时候设定lock信号，告诉总线这是一个不可被中断的内存访问，直到完成了SWP需要进行的两次内存访问之后再clear lock信号。 
 
-lock memory bus对多核系统的性能造成严重的影响*（系统中其他的processor对那条被lock的memory bus的访问就被hold住了）*，如何解决这个问题？最好的锁机制就是不使用锁，因此解决这个问题可以使用釜底抽薪的方法，那就是不在系统中的多个processor之间共享数据，给每一个CPU分配一个不就OK了吗。
+lock memory bus对多核系统的性能造成严重的影响 *（系统中其他的processor对那条被lock的memory bus的访问就被hold住了）* ，如何解决这个问题？最好的锁机制就是不使用锁，因此解决这个问题可以使用釜底抽薪的方法，那就是不在系统中的多个processor之间共享数据，给每一个CPU分配一个不就OK了吗。
 
 当然，随着技术的发展，在ARMv6之后的ARM CPU已经不推荐使用`SWP`这样的指令，而是提供了`LDREX`和`STREX`这样的指令。这种方法是使用软硬件结合的方法来解决原子操作问题，看起来代码比较复杂，但是系统的性能可以得到提升。其实，从硬件角度看，`LDREX`和`STREX`这样的指令也是采用了lock-free的做法。OK，由于不再lock bus，看起来Per-CPU变量存在的基础被打破了。不过考虑cache的操作，实际上它还是有意义的。
 
@@ -28,9 +28,9 @@ lock memory bus对多核系统的性能造成严重的影响*（系统中其他�
 
 ![cache](./2-percpu变量.assets/8369372a65abd7f6f524ecde2892b17f20141016031721.gif)
 
-每个CPU都有自己的L1 cache*（包括data cache和instruction cache）*，所有的CPU共用一个L2 cache。L1、L2以及main memory的访问速度之间的差异都是非常大，最高的性能的情况下当然是L1 cache hit，这样就不需要访问下一阶memory来加载cache line。
+每个CPU都有自己的L1 cache *（包括data cache和instruction cache）* ，所有的CPU共用一个L2 cache。L1、L2以及main memory的访问速度之间的差异都是非常大，最高的性能的情况下当然是L1 cache hit，这样就不需要访问下一阶memory来加载cache line。
 
-我们首先看在多个CPU之间共享内存的情况。这种情况下，任何一个CPU如果修改了共享内存就会导致所有其他CPU的L1 cache上对应的cache line变成invalid*（硬件完成）*。虽然对性能造成影响，但是系统必须这么做，因为需要维持cache的同步。将一个共享memory变成Per-CPU memory本质上是一个耗费更多memory来解决performance的方法。当一个在多个CPU之间共享的变量变成每个CPU都有属于自己的一个私有的变量的时候，我们就不必考虑来自多个CPU上的并发，仅仅考虑本CPU上的并发就OK了。当然，还有一点要注意，那就是在访问Per-CPU变量的时候，不能调度，当然更准确的说法是该task不能调度到其他CPU上去。目前的内核的做法是在访问Per-CPU变量的时候disable preemptive，虽然没有能够完全避免使用锁的机制*（disable preemptive也是一种锁的机制）*，但毫无疑问，这是一种代价比较小的锁。
+我们首先看在多个CPU之间共享内存的情况。这种情况下，任何一个CPU如果修改了共享内存就会导致所有其他CPU的L1 cache上对应的cache line变成invalid *（硬件完成）* 。虽然对性能造成影响，但是系统必须这么做，因为需要维持cache的同步。将一个共享memory变成Per-CPU memory本质上是一个耗费更多memory来解决performance的方法。当一个在多个CPU之间共享的变量变成每个CPU都有属于自己的一个私有的变量的时候，我们就不必考虑来自多个CPU上的并发，仅仅考虑本CPU上的并发就OK了。当然，还有一点要注意，那就是在访问Per-CPU变量的时候，不能调度，当然更准确的说法是该task不能调度到其他CPU上去。目前的内核的做法是在访问Per-CPU变量的时候disable preemptive，虽然没有能够完全避免使用锁的机制 *（disable preemptive也是一种锁的机制）* ，但毫无疑问，这是一种代价比较小的锁。
 
 ## 二、接口
 
@@ -66,7 +66,7 @@ get_cpu_var(var);
 put_cpu_var(var);
 ```
 
-上面这两个接口函数已经内嵌了锁的机制*（preempt disable）*，用户可以直接调用该接口进行本CPU上该变量副本的访问。如果用户确认当前的执行环境已经是preempt disable*（例如持有spinlock）*，那么可以使用lock-free版本的Per-CPU变量的API:
+上面这两个接口函数已经内嵌了锁的机制 *（preempt disable）* ，用户可以直接调用该接口进行本CPU上该变量副本的访问。如果用户确认当前的执行环境已经是preempt disable *（例如持有spinlock）* ，那么可以使用lock-free版本的Per-CPU变量的API:
 
 ```c
 __get_cpu_var
@@ -76,7 +76,7 @@ __get_cpu_var
 
 | 动态分配和释放Per-CPU变量的API         | 描述                                                         |
 | -------------------------------------- | ------------------------------------------------------------ |
-| `alloc_percpu(type)`                   | 分配类型是type的per cpu变量，返回per cpu变量的地址*（注意：不是各个CPU上的副本）* |
+| `alloc_percpu(type)`                   | 分配类型是type的per cpu变量，返回per cpu变量的地址 *（注意：不是各个CPU上的副本）*  |
 | `void free_percpu(void __percpu *ptr)` | 释放ptr指向的per cpu变量空间                                 |
 
 ### 访问动态分配Per-CPU变量的API如下表所示：
@@ -105,7 +105,7 @@ __get_cpu_var
     __typeof__(type) name－－－－－－－－－－－－－－－－－－－－－－定义变量
 ```
 
-在这里具体arch specific的percpu代码中*（arch/arm/include/asm/percpu.h）*可以定义`PER_CPU_DEF_ATTRIBUTES`，以便控制该per cpu变量的属性，当然，如果arch specific的percpu代码不定义，那么在general arch-independent的代码中*（include/asm-generic/percpu.h）*会定义为空。这里可以顺便提一下Per-CPU变量的软件层次：
+在这里具体arch specific的percpu代码中 *（arch/arm/include/asm/percpu.h）* 可以定义`PER_CPU_DEF_ATTRIBUTES`，以便控制该per cpu变量的属性，当然，如果arch specific的percpu代码不定义，那么在general arch-independent的代码中 *（include/asm-generic/percpu.h）* 会定义为空。这里可以顺便提一下Per-CPU变量的软件层次：
 
 1. **arch-independent interface** 在include/linux/percpu.h文件中，定义了内核其他模块要使用per cpu机制使用的接口API以及相关数据结构的定义。内核其他模块需要使用per cpu变量接口的时候需要include该头文件
 
@@ -177,13 +177,13 @@ __get_cpu_var
 
  
 
-了解了静态定义Per-CPU变量的实现，但是为何要引入这么多的section呢？对于kernel中的普通变量，经过了编译和链接后，会被放置到.data或者.bss段，系统在初始化的时候会准备好一切*（例如clear bss）*，由于per cpu变量的特殊性，内核将这些变量放置到了其他的section，位于kernel address space中`__per_cpu_start`和`__per_cpu_end`之间，我们称之Per-CPU变量的原始变量（我也想不出什么好词了）。
+了解了静态定义Per-CPU变量的实现，但是为何要引入这么多的section呢？对于kernel中的普通变量，经过了编译和链接后，会被放置到.data或者.bss段，系统在初始化的时候会准备好一切 *（例如clear bss）* ，由于per cpu变量的特殊性，内核将这些变量放置到了其他的section，位于kernel address space中`__per_cpu_start`和`__per_cpu_end`之间，我们称之Per-CPU变量的原始变量（我也想不出什么好词了）。
 
 只有Per-CPU变量的原始变量还是不够的，必须为每一个CPU建立一个副本，怎么建？直接静态定义一个`NR_CPUS`的数组？`NR_CPUS`定义了系统支持的最大的processor的个数，并不是实际中系统processor的数目，这样的定义非常浪费内存。此外，静态定义的数据在内存中连续，对于UMA系统而言是OK的，对于NUMA系统，每个CPU上的Per-CPU变量的副本应该位于它访问最快的那段memory上，也就是说Per-CPU变量的各个CPU副本可能是散布在整个内存地址空间的，而这些空间之间是有空洞的。本质上，副本per cpu内存的分配归属于内存管理子系统，因此，分配per cpu变量副本的内存本文不会详述，大致的思路如下：
 
 ![percpu](./2-percpu变量.assets/8d9ace9500fce839a185e4567a9c3de420141016031726.gif)
 
-内存管理子系统会根据当前的内存配置为每一个CPU分配一大块memory，对于UMA，这个memory也是位于main memory，对于NUMA，有可能是分配最靠近该CPU的memory*（也就是说该cpu访问这段内存最快）*，但无论如何，这些都是内存管理子系统需要考虑的。无论静态还是动态per cpu变量的分配，其机制都是一样的，只不过，对于静态per cpu变量，需要在系统初始化的时候，对应per cpu section，预先动态分配一个同样size的per cpu chunk。在vmlinux.lds.h文件中，定义了percpu section的排列情况：
+内存管理子系统会根据当前的内存配置为每一个CPU分配一大块memory，对于UMA，这个memory也是位于main memory，对于NUMA，有可能是分配最靠近该CPU的memory *（也就是说该cpu访问这段内存最快）* ，但无论如何，这些都是内存管理子系统需要考虑的。无论静态还是动态per cpu变量的分配，其机制都是一样的，只不过，对于静态per cpu变量，需要在系统初始化的时候，对应per cpu section，预先动态分配一个同样size的per cpu chunk。在vmlinux.lds.h文件中，定义了percpu section的排列情况：
 ```c
 #define PERCPU_INPUT(cacheline)            \
     VMLINUX_SYMBOL(__per_cpu_start) = .;        \
@@ -197,7 +197,7 @@ __get_cpu_var
     *(.data..percpu..shared_aligned)        \
     VMLINUX_SYMBOL(__per_cpu_end) = .;
 ```
-对于build in内核的那些per cpu变量，必然位于`__per_cpu_start`和`__per_cpu_end`之间的per cpu section。在系统初始化的时候*（setup_per_cpu_areas）*，分配per cpu memory chunk，并将per cpu section copy到每一个chunk中。
+对于build in内核的那些per cpu变量，必然位于`__per_cpu_start`和`__per_cpu_end`之间的per cpu section。在系统初始化的时候 *（setup_per_cpu_areas）* ，分配per cpu memory chunk，并将per cpu section copy到每一个chunk中。
 
 ### 访问静态定义的per cpu变量
 
@@ -222,12 +222,12 @@ __get_cpu_var
 #define __this_cpu_ptr(ptr) SHIFT_PERCPU_PTR(ptr, __my_cpu_offset)
 ```
 
-`SHIFT_PERCPU_PTR`这个宏定义从字面上就可以看出它是可以从原始的per cpu变量的地址，通过简单的变换*（SHIFT）*转成实际的per cpu变量副本的地址。实际上，per cpu内存管理模块可以保证原始的per cpu变量的地址和各个CPU上的per cpu变量副本的地址有简单的线性关系*（就是一个固定的offset）*。`__my_cpu_offset`这个宏定义就是和offset相关的，如果arch specific没有定义，那么可以采用asm general版本的，如下：
+`SHIFT_PERCPU_PTR`这个宏定义从字面上就可以看出它是可以从原始的per cpu变量的地址，通过简单的变换 *（SHIFT）* 转成实际的per cpu变量副本的地址。实际上，per cpu内存管理模块可以保证原始的per cpu变量的地址和各个CPU上的per cpu变量副本的地址有简单的线性关系 *（就是一个固定的offset）* 。`__my_cpu_offset`这个宏定义就是和offset相关的，如果arch specific没有定义，那么可以采用asm general版本的，如下：
 
 ```c
 #define __my_cpu_offset per_cpu_offset(raw_smp_processor_id())
 ```
-`raw_smp_processor_id`可以获取本CPU的ID，如果arch specific没有定义`__per_cpu_offset`这个宏，那么offset保存在`__per_cpu_offset`的数组中*（下面只是数组声明，具体定义在mm/percpu.c文件中）*，如下：
+`raw_smp_processor_id`可以获取本CPU的ID，如果arch specific没有定义`__per_cpu_offset`这个宏，那么offset保存在`__per_cpu_offset`的数组中 *（下面只是数组声明，具体定义在mm/percpu.c文件中）* ，如下：
 
 ```c
 #ifndef __per_cpu_offset
