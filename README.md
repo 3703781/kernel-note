@@ -18,3 +18,4 @@
 - [rw自旋锁](./synchronization/5-rw自旋锁.md)
 - [顺序锁](./synchronization/6-顺序锁.md)
 - [mcs自旋锁](./synchronization/7-mcs自旋锁.md)
+- [q自旋锁](./synchronization/8-q自旋锁.md)
